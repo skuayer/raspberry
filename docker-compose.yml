@@ -1,0 +1,235 @@
+version: '2.0'
+
+services:
+  nginx-proxy-manager:
+    image: jlesage/nginx-proxy-manager
+    ports:
+      - 8181:8181
+      - 8080:8080
+      - 4443:4443
+    volumes:
+      - /docker/nginx-proxy-manager:/config:rw
+    restart: unless-stopped
+  
+  adguardhome:
+    image: adguard/adguardhome
+    container_name: adguardhome
+    ports:
+      - 876:80
+      - 53:53/tcp
+      - 53:53/udp
+      - 67:67/udp
+      - 68:68/tcp
+      - 68:68/udp
+      - 853:853/tcp
+      - 3000:3000/tcp
+    volumes:
+      - /mnt/raid/docker/adguardhome/work:/opt/adguardhome/work
+      - /mnt/raid/docker/adguardhome/confdir:/opt/adguardhome/conf
+    restart: unless-stopped
+          
+  heimdall:
+    image: linuxserver/heimdall
+    container_name: heimdall
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/heimdall:/config
+    ports:
+      - 80:80
+      - 443:443
+    restart: unless-stopped
+    
+  transmission:
+    image: linuxserver/transmission
+    container_name: transmission
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+      - USER=user
+      - PASS=password
+    volumes:
+      - /mnt/raid/docker/transmission:/config
+      - /mnt/pool/media:/mnt/pool/media
+      - /mnt/pool/distr:/mnt/pool/distr
+      - /mnt/pool/temp:/incomplete
+    ports:
+      - 9091:9091
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
+        
+  openvpn-client:
+    image: dperson/openvpn-client
+    cap_add:
+      - net_admin
+    environment:
+      TZ: 'Europe/Moscow'
+      Furewall: 'true'
+      DNS: '192.168.1.1'
+      DEFAULT_GATEWAY: 'false'
+      Privileged: 'true'
+    network_mode: bridge
+    ports:
+      - 9117:9117/tcp
+    restart: unless-stopped
+    volumes:
+      - /mnt/raid/docker/openvpn-client/:/vpn:rw,slave
+    devices:
+    - /dev/net/tun:/dev/net/tun
+  
+  jackett:
+    image: linuxserver/jackett:latest
+    depends_on:
+      - openvpn-client
+    environment:
+      TZ: 'Europe/Moscow'
+      PUID: '99'
+      PGID: '100'
+    network_mode: "service:openvpn-client"
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    volumes:
+      - /mnt/raid/docker/jackett/blackhole/:/downloads:rw,slave
+      - /mnt/raid/docker/jackett:/config:rw,slave
+
+  lidarr:
+    image: linuxserver/lidarr
+    container_name: lidarr
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/lidarr/config:/config
+      - /mnt/pool/media:/mnt/pool/media
+    ports:
+      - 877:8686
+    restart: unless-stopped
+  
+  sonarr:
+    image: linuxserver/sonarr:preview
+    container_name: sonarr
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/sonarr:/config
+      - /mnt/pool/media:/mnt/pool/media
+    ports:
+      - 878:8989
+    restart: unless-stopped
+    
+  radarr:
+    image: linuxserver/radarr
+    container_name: radarr
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/radarr:/config
+      - /mnt/pool/media:/mnt/pool/media
+    ports:
+      - 879:7878
+    restart: unless-stopped
+    
+  plex:
+    image: linuxserver/plex
+    container_name: plex
+    network_mode: host
+    environment:
+      - PUID=1000
+      - PGID=100
+      - VERSION=docker
+    volumes:
+      - /mnt/raid/docker/plex:/config
+      - /mnt/pool/media:/media
+      - /mnt/pool/photo:/photo
+    devices:
+      - /dev/dri:/dev/dri
+    restart: unless-stopped
+
+  tautulli:
+    image: linuxserver/tautulli
+    container_name: tautulli
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/tautulli:/config
+      - /mnt/raid/docker/plex/Library/Application Support/Plex Media Server/Logs:/logs
+    ports:
+      - 880:8181
+    restart: unless-stopped
+  
+  cloudcmd:
+    ports:
+      - 881:8000
+    volumes:
+      - ~:/root
+      - /:/mnt/fs
+    image: coderaiser/cloudcmd
+    
+  ombi:
+    image: linuxserver/ombi
+    container_name: ombi
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/ombi:/config
+    ports:
+      - 882:3579
+    restart: unless-stopped
+    
+  syncthing:
+    image: linuxserver/syncthing
+    container_name: syncthing
+    environment:
+      - PUID=1000
+      - PGID=100
+      - TZ=Europe/Moscow
+    volumes:
+      - /mnt/raid/docker/syncthing:/config
+      - /mnt/raid/syncthing:/mnt/raid/syncthing
+    ports:
+      - 883:8384
+      - 22000:22000
+      - 21027:21027/udp
+    restart: unless-stopped
+
+  db:
+    image: mariadb
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: always
+    volumes:
+      - /docker/nextcloud/db:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_pwd
+      - MYSQL_PASSWORD=db_pwd
+      - MYSQL_DATABASE=db_name
+      - MYSQL_USER=db_user
+      - TZ=Europe/Moscow
+      
+  app:
+    image: nextcloud:19.0.5
+    environment:
+    - TZ=Europe/Moscow
+    ports:
+      - 884:80
+    links:
+      - db
+    volumes:
+      - /docker/nextcloud/nc:/var/www/html
+      - /mnt/raid/nc/data:/var/www/html/data
+      - /mnt/raid/documents:/mnt/raid/documents
+      - /mnt/pool/photo:/mnt/pool/photo:ro
+    restart: always
